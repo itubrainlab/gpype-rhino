@@ -1,9 +1,10 @@
 """Licence-free g.Pype source for the Unicorn Hybrid Black over Bluetooth."""
-from .protocol import RhinoDevice, find_ports
+from .protocol import RhinoDevice, find_headsets, find_ports
 from .transport import DeviceNotFound
 
 __version__ = "0.1.0"
-__all__ = ["RhinoHybridBlack", "RhinoDevice", "DeviceNotFound", "find_ports"]
+__all__ = ["RhinoHybridBlack", "RhinoDevice", "DeviceNotFound",
+           "find_headsets", "find_ports"]
 
 
 def __getattr__(name):

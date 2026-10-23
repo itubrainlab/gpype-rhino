@@ -1,9 +1,12 @@
 """Byte links to the headset's Bluetooth serial channel.
 
-Two ways to the same RFCOMM channel:
+Three ways to the same RFCOMM channel:
 
 - :class:`SerialLink`, the operating system's serial port for the paired
-  headset. Right on Linux (``/dev/rfcommN``) and Windows (``COMn``).
+  headset: ``COMn`` on Windows, or a ``/dev/rfcommN`` bound by hand.
+- :class:`BluetoothLink`, Linux only: an RFCOMM socket to the headset,
+  found by name among BlueZ's paired devices. Needs no ``rfcomm bind``
+  and no membership of the ``dialout`` group that owns /dev/rfcommN.
 - :class:`BridgeLink`, macOS only: the bundled RhinoConnect helper
   opens the channel through IOBluetooth and relays it over a local TCP
   socket. macOS's ``/dev/cu.UN-*`` port proved unreliable -- after one
@@ -13,6 +16,8 @@ Two ways to the same RFCOMM channel:
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -36,6 +41,43 @@ def _helper_built(directory: Path) -> bool:
 
 class DeviceNotFound(ConnectionError):
     """No paired headset by that name: retrying cannot help."""
+
+
+_ADDRESS = re.compile(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}")
+
+
+def is_address(name: str) -> bool:
+    """Whether name is a Bluetooth address, e.g. ``A4:6D:D4:17:BF:35``."""
+    return _ADDRESS.fullmatch(name) is not None
+
+
+def paired_devices() -> list[tuple[str, str]]:
+    """(address, name) of each device BlueZ has paired, Linux only.
+
+    Asks ``bluetoothctl``, which ships with BlueZ and needs no root.
+
+    Raises:
+        DeviceNotFound: If bluetoothctl is not installed.
+    """
+    if shutil.which("bluetoothctl") is None:
+        raise DeviceNotFound(
+            "bluetoothctl (BlueZ) is not installed, so paired headsets "
+            "cannot be found by name. Install bluez, or give the "
+            "headset's Bluetooth address instead.")
+    # BlueZ 5.65 and later take "devices Paired"; earlier ones only know
+    # "paired-devices" and list every known device for "devices Paired".
+    for command in (["devices", "Paired"], ["paired-devices"]):
+        result = subprocess.run(["bluetoothctl", *command],
+                                capture_output=True, text=True, timeout=10)
+        devices = []
+        for line in result.stdout.splitlines():
+            parts = line.strip().split(" ", 2)
+            if (len(parts) == 3 and parts[0] == "Device"
+                    and is_address(parts[1])):
+                devices.append((parts[1], parts[2]))
+        if result.returncode == 0 and "Invalid command" not in result.stdout:
+            return devices
+    return []
 
 
 class SerialLink:
@@ -75,15 +117,114 @@ class SerialLink:
             self._serial = None
 
 
-class BridgeLink:
+class _SocketLink:
+    """Reading and writing a connected stream socket."""
+
+    def __init__(self):
+        self._socket: Optional[socket.socket] = None
+
+    def write(self, data: bytes) -> None:
+        self._socket.sendall(data)
+
+    def read(self, size: int, timeout: float) -> bytes:
+        data = b""
+        deadline = time.monotonic() + timeout
+        while len(data) < size:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            chunk = self.read_some(remaining)
+            if not chunk:
+                break
+            data += chunk
+        return data
+
+    def read_some(self, timeout: float) -> bytes:
+        self._socket.settimeout(timeout)
+        try:
+            chunk = self._socket.recv(65536)
+        except socket.timeout:
+            return b""
+        if not chunk:
+            raise ConnectionError("The Bluetooth channel closed.")
+        return chunk
+
+    def drain(self) -> None:
+        while self.read_some(0.05):
+            pass
+
+    def close(self) -> None:
+        if self._socket is not None:
+            self._socket.close()
+            self._socket = None
+
+
+class BluetoothLink(_SocketLink):
+    """The headset's RFCOMM channel as a BlueZ socket, Linux only."""
+
+    #: The headset's serial port profile is on RFCOMM channel 1.
+    CHANNEL = 1
+    #: How long connecting may take; the first page often takes seconds.
+    CONNECT_TIMEOUT_S = 15.0
+
+    def __init__(self, device_name: str):
+        """
+        Args:
+            device_name: The headset's paired name, e.g. ``UN-2024.08.41``
+                (or a Bluetooth address). Looked up on open, so a headset
+                paired after this is made is still found.
+        """
+        super().__init__()
+        self.name = device_name
+        self.address: Optional[str] = (device_name if is_address(device_name)
+                                       else None)
+
+    def open(self, timeout: float) -> None:
+        if self.address is None:
+            self.address = address_for(self.name)
+        sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM,
+                             socket.BTPROTO_RFCOMM)
+        sock.settimeout(max(timeout, self.CONNECT_TIMEOUT_S))
+        try:
+            sock.connect((self.address, self.CHANNEL))
+        except OSError as error:
+            sock.close()
+            raise ConnectionError(
+                f"Bluetooth connection to {self.name} ({self.address}) "
+                f"failed: {error}") from error
+        self._socket = sock
+
+
+def address_for(name: str) -> str:
+    """The Bluetooth address of the paired device with this name.
+
+    Names compare as :func:`gprhino.protocol.plain_name` does, and the
+    ``UN-`` prefix may be left out: ``2024.08.41`` finds ``UN-2024.08.41``.
+
+    Raises:
+        DeviceNotFound: If no paired device has the name.
+    """
+    from .protocol import plain_name
+    wanted = plain_name(name)
+    for address, device in paired_devices():
+        plain = plain_name(device)
+        if wanted in (plain, plain.removeprefix("un-")):
+            return address
+    raise DeviceNotFound(
+        f"No paired Bluetooth device is named {name}. Pair the headset "
+        f"first, e.g. with bluetoothctl: scan on, pair <address>, "
+        f"trust <address>.")
+
+
+class BridgeLink(_SocketLink):
     """The headset's RFCOMM channel through the RhinoConnect helper."""
 
     #: How long the helper may take to open the channel, in seconds.
     CHANNEL_TIMEOUT_S = 20.0
 
     def __init__(self, device_name: str):
+        super().__init__()
         self.name = device_name
-        self._socket: Optional[socket.socket] = None
         self._status: Optional[Path] = None
 
     @staticmethod
@@ -163,41 +304,9 @@ class BridgeLink:
             if line.startswith(("ERROR", "CLOSED")):
                 raise ConnectionError(f"RhinoConnect: {line}")
 
-    def write(self, data: bytes) -> None:
-        self._socket.sendall(data)
-
-    def read(self, size: int, timeout: float) -> bytes:
-        data = b""
-        deadline = time.monotonic() + timeout
-        while len(data) < size:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            chunk = self.read_some(remaining)
-            if not chunk:
-                break
-            data += chunk
-        return data
-
-    def read_some(self, timeout: float) -> bytes:
-        self._socket.settimeout(timeout)
-        try:
-            chunk = self._socket.recv(65536)
-        except socket.timeout:
-            return b""
-        if not chunk:
-            raise ConnectionError("The Bluetooth channel closed.")
-        return chunk
-
-    def drain(self) -> None:
-        while self.read_some(0.05):
-            pass
-
     def close(self) -> None:
         # The helper closes the channel and exits when the client goes.
-        if self._socket is not None:
-            self._socket.close()
-            self._socket = None
+        super().close()
         if self._status is not None:
             self._status.unlink(missing_ok=True)
             self._status = None

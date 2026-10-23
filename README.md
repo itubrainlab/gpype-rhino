@@ -46,8 +46,21 @@ data = device.get_data(250)   # one second: EEG, accel, gyro, battery, counter, 
 device.stop()
 ```
 
-Pair the headset in the system Bluetooth settings first. On Linux, bind it
-with `rfcomm bind` and pass the port (`port="/dev/rfcomm0"`). On macOS the
+Pair the headset in the system Bluetooth settings first. On Linux the
+headset is found by name among BlueZ's paired devices (via `bluetoothctl`)
+and reached over an RFCOMM socket: no `rfcomm bind`, no root and no
+`dialout` group needed. The `UN-` prefix may be left out of the name
+(`"2024.10.18"`), and a Bluetooth address works too. To pair from a
+terminal:
+
+```bash
+bluetoothctl
+[bluetooth]# scan on          # wait for UN-XXXX.XX.XX to appear
+[bluetooth]# pair A4:6D:D4:17:BF:35
+[bluetooth]# trust A4:6D:D4:17:BF:35
+```
+
+A `/dev/rfcommN` bound by hand still works: pass it as `port`. On macOS the
 connection goes through a small helper app, `RhinoConnect`. It is built
 from the bundled Swift source the first time it is needed, which requires
 the Xcode command line tools, and is placed in

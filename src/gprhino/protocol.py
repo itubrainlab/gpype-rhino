@@ -1,11 +1,11 @@
 """Licence-free driver for the g.tec Unicorn Hybrid Black.
 
 The headset is a Bluetooth classic device exposing a serial port profile
-(RFCOMM). Once it is paired, the operating system offers it as a serial
-port -- ``/dev/rfcommN`` on Linux (after ``rfcomm bind``), ``COMn`` on
-Windows -- and the whole protocol is three bytes to start, three to stop,
-and fixed 45-byte frames in between. On macOS the channel is reached
-through the bundled RhinoConnect helper instead (see transport.py).
+(RFCOMM). Once it is paired, Windows offers it as a serial port
+(``COMn``), Linux opens the channel as a BlueZ socket, and macOS reaches
+it through the bundled RhinoConnect helper (see transport.py). The whole
+protocol is three bytes to start, three to stop, and fixed 45-byte frames
+in between.
 Nothing here uses g.tec's libraries.
 
 Frame layout (250 Hz, one frame per sample)::
@@ -31,7 +31,8 @@ from typing import Optional
 import numpy as np
 import serial
 
-from .transport import BridgeLink, DeviceNotFound, SerialLink
+from .transport import (BluetoothLink, BridgeLink, DeviceNotFound,
+                        SerialLink, paired_devices)
 
 SAMPLING_RATE = 250
 NUM_EEG = 8
@@ -56,7 +57,8 @@ NUM_CHANNELS = NUM_EEG + NUM_ACCEL + NUM_GYRO + 3
 
 
 def find_ports() -> list[str]:
-    """Serial ports that look like a paired Unicorn."""
+    """Serial ports that look like a paired Unicorn. On Linux these are
+    only the /dev/rfcommN bound by hand; see :func:`find_headsets`."""
     if sys.platform == "darwin":
         return sorted(glob.glob("/dev/cu.UN-*"))
     if sys.platform.startswith("linux"):
@@ -64,6 +66,12 @@ def find_ports() -> list[str]:
     from serial.tools import list_ports
     return [p.device for p in list_ports.comports()
             if "UN-" in (p.description or "") or "UN-" in (p.name or "")]
+
+
+def find_headsets() -> list[str]:
+    """Names of the paired Unicorns, from BlueZ (Linux only)."""
+    return [name for _, name in paired_devices()
+            if name.upper().startswith("UN-")]
 
 
 def plain_name(name: str) -> str:
@@ -82,7 +90,8 @@ def port_for(serial_number: str) -> str:
 
     Raises:
         DeviceNotFound: If no port carries the name. Linux names its
-            ports /dev/rfcommN, so there the port must be given.
+            ports /dev/rfcommN, so there the port must be given (or the
+            bluetooth transport used, which needs no port).
     """
     wanted = plain_name(serial_number)
     if sys.platform == "win32":
@@ -153,17 +162,35 @@ class RhinoDevice:
             serial_number: The headset's name, e.g. ``UN-2024.08.41``, as
                 the Bluetooth settings list it; dots are optional. If
                 None, the one on ``port``, else the first paired one.
-            port: The headset's serial port, e.g. ``/dev/rfcomm0``. Only
-                needed where it cannot be found from the name (Linux).
-            transport: ``"serial"`` reads the port itself, ``"bridge"``
-                goes through the RhinoConnect helper (macOS only), and
-                ``"auto"`` picks the bridge on macOS, the port elsewhere.
+                On Linux a Bluetooth address also does.
+            port: The headset's serial port, e.g. ``COM3``, or a
+                ``/dev/rfcommN`` bound by hand on Linux.
+            transport: ``"serial"`` reads the port itself,
+                ``"bluetooth"`` opens an RFCOMM socket (Linux only),
+                ``"bridge"`` goes through the RhinoConnect helper (macOS
+                only), and ``"auto"`` picks the bridge on macOS, the
+                socket on Linux unless a port is given, the port
+                elsewhere.
 
         Raises:
             DeviceNotFound: If no headset is named, or none is paired.
         """
+        serial_number = serial_number or None
         if transport == "auto":
-            transport = "bridge" if sys.platform == "darwin" else "serial"
+            if sys.platform == "darwin":
+                transport = "bridge"
+            elif sys.platform.startswith("linux") and port is None:
+                transport = "bluetooth"
+            else:
+                transport = "serial"
+        if serial_number is None and transport == "bluetooth":
+            headsets = find_headsets()
+            if not headsets:
+                raise DeviceNotFound(
+                    "No paired Unicorn found. Pair the headset first, "
+                    "e.g. with bluetoothctl: scan on, pair <address>, "
+                    "trust <address>.")
+            serial_number = headsets[0]
         if serial_number is None:
             if port is None:
                 ports = find_ports()
@@ -178,8 +205,12 @@ class RhinoDevice:
         #: The headset's name, as given.
         self.serial_number = serial_number
         self.port = port
-        self._link = (BridgeLink(serial_number) if transport == "bridge"
-                      else SerialLink(port))
+        if transport == "bridge":
+            self._link = BridgeLink(serial_number)
+        elif transport == "bluetooth":
+            self._link = BluetoothLink(serial_number)
+        else:
+            self._link = SerialLink(port)
         self._link_open = False
         self._thread: Optional[threading.Thread] = None
         self._running = False

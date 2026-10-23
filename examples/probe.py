@@ -9,12 +9,15 @@ import sys
 
 import numpy as np
 
-from gprhino import RhinoDevice, find_ports
+from gprhino import RhinoDevice, find_headsets, find_ports
 from gprhino.protocol import SAMPLING_RATE
 
 name = sys.argv[1] if len(sys.argv) > 1 else None
 seconds = float(sys.argv[2]) if len(sys.argv) > 2 else 5.0
-print("ports:", find_ports())
+if sys.platform.startswith("linux"):
+    print("paired headsets:", find_headsets())
+else:
+    print("ports:", find_ports())
 
 device = RhinoDevice(name)
 print("connecting to", device.serial_number)

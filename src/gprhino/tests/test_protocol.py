@@ -1,7 +1,9 @@
+import subprocess
+
 import numpy as np
 import pytest
 
-from gprhino import protocol
+from gprhino import protocol, transport
 from gprhino.protocol import RhinoDevice, decode, plain_name
 
 from .frames import FakeLink, make_frame
@@ -127,7 +129,61 @@ def test_start_gives_up_without_acknowledgement(device, monkeypatch):
     assert device._link.closed == device._link.opened
 
 
-def test_no_paired_device(monkeypatch):
+@pytest.mark.parametrize("transport", ["serial", "bluetooth"])
+def test_no_paired_device(monkeypatch, transport):
     monkeypatch.setattr(protocol, "find_ports", lambda: [])
+    monkeypatch.setattr(protocol, "paired_devices", lambda: [])
     with pytest.raises(protocol.DeviceNotFound):
-        RhinoDevice()
+        RhinoDevice(transport=transport)
+
+
+PAIRED = [("78:5E:A2:BD:0D:5E", "WILLEN"),
+          ("A4:6D:D4:17:BF:35", "UN-2024.10.18")]
+
+
+@pytest.mark.parametrize("platform, port, link", [
+    ("linux", None, transport.BluetoothLink),
+    ("linux", "/dev/rfcomm0", transport.SerialLink),
+    ("darwin", None, transport.BridgeLink),
+    ("win32", "COM3", transport.SerialLink),
+])
+def test_auto_transport(monkeypatch, platform, port, link):
+    monkeypatch.setattr(protocol.sys, "platform", platform)
+    assert isinstance(RhinoDevice("UN-2024.10.18", port=port)._link, link)
+
+
+def test_bluetooth_picks_first_paired_headset(monkeypatch):
+    monkeypatch.setattr(protocol, "paired_devices", lambda: PAIRED)
+    device = RhinoDevice(transport="bluetooth")
+    assert device.serial_number == "UN-2024.10.18"
+
+
+@pytest.mark.parametrize("name", [
+    "UN-2024.10.18", "UN-20241018", "2024.10.18", "un-2024.10.18"])
+def test_address_for(monkeypatch, name):
+    monkeypatch.setattr(transport, "paired_devices", lambda: PAIRED)
+    assert transport.address_for(name) == "A4:6D:D4:17:BF:35"
+
+
+def test_address_for_unknown_name(monkeypatch):
+    monkeypatch.setattr(transport, "paired_devices", lambda: PAIRED)
+    with pytest.raises(transport.DeviceNotFound):
+        transport.address_for("UN-2024.08.41")
+
+
+def test_bluetooth_link_takes_an_address():
+    link = transport.BluetoothLink("A4:6D:D4:17:BF:35")
+    assert link.address == "A4:6D:D4:17:BF:35"
+
+
+def test_paired_devices_parses_bluetoothctl(monkeypatch):
+    output = ("Device A4:6D:D4:17:BF:35 UN-2024.10.18\n"
+              "Device 78:5E:A2:BD:0D:5E Some Name With Spaces\n"
+              "[bluetooth]# noise\n")
+    monkeypatch.setattr(transport.shutil, "which", lambda _: "/bin/x")
+    monkeypatch.setattr(transport.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(
+                            a, 0, output, ""))
+    assert transport.paired_devices() == [
+        ("A4:6D:D4:17:BF:35", "UN-2024.10.18"),
+        ("78:5E:A2:BD:0D:5E", "Some Name With Spaces")]

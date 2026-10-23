@@ -61,7 +61,7 @@ class RhinoHybridBlack(AmplifierSource):
             SERIAL = "serial"
             #: Serial port of the headset, where the name cannot find it.
             PORT = "port"
-            #: "auto", "serial" or "bridge"; see RhinoDevice.
+            #: "auto", "serial", "bluetooth" or "bridge"; see RhinoDevice.
             TRANSPORT = "transport"
 
     def __init__(
@@ -82,11 +82,13 @@ class RhinoHybridBlack(AmplifierSource):
             serial: Name of the headset as the Bluetooth settings list
                 it, e.g. ``UN-2024.08.41`` (the same value g.Pype's
                 HybridBlack takes). The first paired one if None.
-            port: Serial port of the headset, e.g. ``/dev/rfcomm0``. Only
-                needed where the name cannot find it (Linux).
+            port: Serial port of the headset, e.g. ``COM3``. Not needed
+                on Linux or macOS.
             transport: How to reach it: ``"serial"`` reads the port,
+                ``"bluetooth"`` opens an RFCOMM socket (Linux),
                 ``"bridge"`` uses the RhinoConnect helper (macOS), and
-                ``"auto"`` picks the bridge on macOS, the port elsewhere.
+                ``"auto"`` picks the socket on Linux unless a port is
+                given, the bridge on macOS, the port elsewhere.
             channel_count: Number of EEG channels (1-8). Defaults to 8.
             frame_size: Samples per processing frame.
             include_accel: Include accelerometer channels (3 channels).
