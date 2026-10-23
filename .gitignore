@@ -1,0 +1,20 @@
+# Build artefacts
+build/
+dist/
+*.egg-info/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# macOS helper, built on first use
+src/gpype_rhino/macos/UnicornConnect.app/
+
+# Local data
+recordings/
+*.h5
+*_snapshot.png
+
+.DS_Store

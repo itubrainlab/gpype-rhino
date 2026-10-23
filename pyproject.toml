@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpype_rhino"
+dynamic = ["version"]
+description = "Licence-free g.Pype source for the g.tec Unicorn Hybrid Black over Bluetooth"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pyserial>=3.5",
+    "gpype>=4.1,<5",
+]
+keywords = ["eeg", "bci", "unicorn", "gpype", "bluetooth"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools.dynamic]
+version = { attr = "gpype_rhino.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.package-data]
+# The helper's source ships; the app itself is built on first use.
+gpype_rhino = ["macos/UnicornConnect.swift", "macos/build.sh"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/gpype_rhino/tests"]
