@@ -48,12 +48,19 @@ device.stop()
 
 Pair the headset in the system Bluetooth settings first. On Linux, bind it
 with `rfcomm bind` and pass the port (`port="/dev/rfcomm0"`). On macOS the
-connection goes through a small helper app, `UnicornConnect`. It is built
+connection goes through a small helper app, `RhinoConnect`. It is built
 from the bundled Swift source the first time it is needed, which requires
 the Xcode command line tools, and is placed in
 `~/Library/Caches/gpype_rhino` when the install directory is read-only.
+macOS asks once for Bluetooth access the first time `RhinoConnect` runs.
 
-More scripts are in `examples/`.
+## Examples
+
+- `examples/scope.py` shows the headset in a g.Pype time-series scope, and
+  records (`--save-as`) or replays (`--load-from`) sessions with g.Pype's
+  record & replay, which needs `pip install "gpype[formats]"`.
+- `examples/probe.py` reads a few seconds without g.Pype and prints a
+  summary of each signal.
 
 ## Tests
 
@@ -62,3 +69,7 @@ The tests ship inside the package and need no headset:
 ```bash
 pytest --pyargs gpype_rhino
 ```
+
+## License
+
+MIT, © 2026 ITU brAIn lab. See [LICENSE](LICENSE).

@@ -10,7 +10,7 @@ __pycache__/
 .pytest_cache/
 
 # macOS helper, built on first use
-src/gpype_rhino/macos/UnicornConnect.app/
+src/gpype_rhino/macos/RhinoConnect.app/
 
 # Local data
 recordings/

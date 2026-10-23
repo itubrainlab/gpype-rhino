@@ -5,7 +5,7 @@ The headset is a Bluetooth classic device exposing a serial port profile
 port -- ``/dev/rfcommN`` on Linux (after ``rfcomm bind``), ``COMn`` on
 Windows -- and the whole protocol is three bytes to start, three to stop,
 and fixed 45-byte frames in between. On macOS the channel is reached
-through the bundled UnicornConnect helper instead (see transport.py).
+through the bundled RhinoConnect helper instead (see transport.py).
 Nothing here uses g.tec's libraries.
 
 Frame layout (250 Hz, one frame per sample)::
@@ -156,7 +156,7 @@ class RhinoDevice:
             port: The headset's serial port, e.g. ``/dev/rfcomm0``. Only
                 needed where it cannot be found from the name (Linux).
             transport: ``"serial"`` reads the port itself, ``"bridge"``
-                goes through the UnicornConnect helper (macOS only), and
+                goes through the RhinoConnect helper (macOS only), and
                 ``"auto"`` picks the bridge on macOS, the port elsewhere.
 
         Raises:

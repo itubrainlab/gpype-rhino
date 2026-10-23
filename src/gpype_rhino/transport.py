@@ -4,7 +4,7 @@ Two ways to the same RFCOMM channel:
 
 - :class:`SerialLink`, the operating system's serial port for the paired
   headset. Right on Linux (``/dev/rfcommN``) and Windows (``COMn``).
-- :class:`BridgeLink`, macOS only: the bundled UnicornConnect helper
+- :class:`BridgeLink`, macOS only: the bundled RhinoConnect helper
   opens the channel through IOBluetooth and relays it over a local TCP
   socket. macOS's ``/dev/cu.UN-*`` port proved unreliable -- after one
   session it stopped reaching the headset at all, until Bluetooth was
@@ -23,7 +23,7 @@ from typing import Optional
 import serial
 
 HELPER_DIR = Path(__file__).parent / "macos"
-HELPER_NAME = "UnicornConnect.app"
+HELPER_NAME = "RhinoConnect.app"
 #: Where the helper is built when the package directory is read-only, as
 #: an installed package's usually is.
 HELPER_CACHE = Path.home() / "Library" / "Caches" / "gpype_rhino"
@@ -31,7 +31,7 @@ HELPER_CACHE = Path.home() / "Library" / "Caches" / "gpype_rhino"
 
 def _helper_built(directory: Path) -> bool:
     return (directory / HELPER_NAME / "Contents" / "MacOS"
-            / "UnicornConnect").exists()
+            / "RhinoConnect").exists()
 
 
 class DeviceNotFound(ConnectionError):
@@ -76,7 +76,7 @@ class SerialLink:
 
 
 class BridgeLink:
-    """The headset's RFCOMM channel through the UnicornConnect helper."""
+    """The headset's RFCOMM channel through the RhinoConnect helper."""
 
     #: How long the helper may take to open the channel, in seconds.
     CHANNEL_TIMEOUT_S = 20.0
@@ -111,7 +111,7 @@ class BridgeLink:
     def open(self, timeout: float) -> None:
         helper = self.ensure_helper()
         port = _free_tcp_port()
-        fd, status = tempfile.mkstemp(prefix="unicorn-connect-", suffix=".log")
+        fd, status = tempfile.mkstemp(prefix="rhino-connect-", suffix=".log")
         os.close(fd)
         self._status = Path(status)
         # Launched through LaunchServices, so macOS attributes Bluetooth
@@ -136,7 +136,7 @@ class BridgeLink:
             except OSError:
                 if time.monotonic() >= deadline:
                     raise ConnectionError(
-                        "The UnicornConnect helper did not start.")
+                        "The RhinoConnect helper did not start.")
                 time.sleep(0.1)
 
     def _wait_for(self, word: str, timeout: float) -> None:
@@ -145,7 +145,7 @@ class BridgeLink:
             self._fail_if_helper_failed()
             if time.monotonic() >= deadline:
                 raise ConnectionError(
-                    f"The UnicornConnect helper did not report {word}.")
+                    f"The RhinoConnect helper did not report {word}.")
             time.sleep(0.1)
 
     def _status_text(self) -> str:
@@ -161,7 +161,7 @@ class BridgeLink:
                     f"No paired Bluetooth device is named {self.name}. "
                     f"Pair the headset in the Bluetooth settings first.")
             if line.startswith(("ERROR", "CLOSED")):
-                raise ConnectionError(f"UnicornConnect: {line}")
+                raise ConnectionError(f"RhinoConnect: {line}")
 
     def write(self, data: bytes) -> None:
         self._socket.sendall(data)

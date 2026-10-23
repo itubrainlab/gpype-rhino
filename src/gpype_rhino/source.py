@@ -85,7 +85,7 @@ class RhinoHybridBlack(AmplifierSource):
             port: Serial port of the headset, e.g. ``/dev/rfcomm0``. Only
                 needed where the name cannot find it (Linux).
             transport: How to reach it: ``"serial"`` reads the port,
-                ``"bridge"`` uses the UnicornConnect helper (macOS), and
+                ``"bridge"`` uses the RhinoConnect helper (macOS), and
                 ``"auto"`` picks the bridge on macOS, the port elsewhere.
             channel_count: Number of EEG channels (1-8). Defaults to 8.
             frame_size: Samples per processing frame.

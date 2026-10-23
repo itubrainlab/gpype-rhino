@@ -1,6 +1,6 @@
 // Bridges a paired Unicorn's Bluetooth serial channel to a local TCP port.
 //
-//   UnicornConnect <name-or-address> <tcp-port>
+//   RhinoConnect <name-or-address> <tcp-port>
 //
 // On current macOS the /dev/cu.UN-* port of a serial-only (SPP) device
 // does not reliably carry its data, so this opens the RFCOMM channel
@@ -25,7 +25,7 @@ func fail(_ why: String) -> Never {
 
 let args = CommandLine.arguments
 guard args.count >= 3, let tcpPort = UInt16(args[2]) else {
-    emit("usage: UnicornConnect <name-or-address> <tcp-port>")
+    emit("usage: RhinoConnect <name-or-address> <tcp-port>")
     exit(2)
 }
 let target = args[1]
