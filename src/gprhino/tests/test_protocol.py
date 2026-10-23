@@ -187,3 +187,16 @@ def test_paired_devices_parses_bluetoothctl(monkeypatch):
     assert transport.paired_devices() == [
         ("A4:6D:D4:17:BF:35", "UN-2024.10.18"),
         ("78:5E:A2:BD:0D:5E", "Some Name With Spaces")]
+
+
+def test_sockaddr_rc_matches_linux():
+    """struct sockaddr_rc: family, address least significant byte first,
+    channel, padded to 10 bytes."""
+    import ctypes
+    bdaddr = bytes.fromhex("A46DD417BF35")[::-1]
+    addr = transport._SockaddrRc(
+        transport._AF_BLUETOOTH,
+        (ctypes.c_ubyte * 6).from_buffer_copy(bdaddr), 1)
+    assert ctypes.sizeof(addr) == 10
+    assert bytes(addr)[:9] == (bytes([31, 0]) + bytes.fromhex("35BF17D46DA4")
+                               + bytes([1]))

@@ -15,8 +15,12 @@ Three ways to the same RFCOMM channel:
 """
 from __future__ import annotations
 
+import ctypes
+import ctypes.util
+import errno
 import os
 import re
+import select
 import shutil
 import socket
 import subprocess
@@ -182,17 +186,77 @@ class BluetoothLink(_SocketLink):
     def open(self, timeout: float) -> None:
         if self.address is None:
             self.address = address_for(self.name)
-        sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM,
-                             socket.BTPROTO_RFCOMM)
-        sock.settimeout(max(timeout, self.CONNECT_TIMEOUT_S))
         try:
-            sock.connect((self.address, self.CHANNEL))
+            self._socket = rfcomm_connect(
+                self.address, self.CHANNEL,
+                max(timeout, self.CONNECT_TIMEOUT_S))
         except OSError as error:
-            sock.close()
             raise ConnectionError(
                 f"Bluetooth connection to {self.name} ({self.address}) "
                 f"failed: {error}") from error
-        self._socket = sock
+
+
+#: Linux's numbers for Bluetooth sockets, for Pythons built without them.
+_AF_BLUETOOTH = 31
+_BTPROTO_RFCOMM = 3
+
+
+class _SockaddrRc(ctypes.Structure):
+    """Linux's struct sockaddr_rc."""
+    _fields_ = [("rc_family", ctypes.c_ushort),
+                ("rc_bdaddr", ctypes.c_ubyte * 6),
+                ("rc_channel", ctypes.c_ubyte)]
+
+
+def rfcomm_connect(address: str, channel: int,
+                   timeout: float) -> socket.socket:
+    """A stream socket connected to an RFCOMM channel, Linux only.
+
+    Python's socket module has Bluetooth only where it was built with
+    BlueZ's headers, which relocatable builds such as
+    python-build-standalone are not. The kernel has it regardless, so
+    without the module's support the socket is made from the kernel's
+    numbers and connected through libc; reading and writing it then need
+    nothing Bluetooth-specific.
+
+    Raises:
+        OSError: If the connection fails or takes longer than timeout.
+    """
+    if hasattr(socket, "AF_BLUETOOTH"):
+        sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM,
+                             socket.BTPROTO_RFCOMM)
+        sock.settimeout(timeout)
+        try:
+            sock.connect((address, channel))
+        except OSError:
+            sock.close()
+            raise
+        return sock
+
+    sock = socket.socket(_AF_BLUETOOTH, socket.SOCK_STREAM, _BTPROTO_RFCOMM)
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        # bdaddr_t holds the address least significant byte first.
+        bdaddr = bytes.fromhex(address.replace(":", ""))[::-1]
+        addr = _SockaddrRc(_AF_BLUETOOTH,
+                           (ctypes.c_ubyte * 6).from_buffer_copy(bdaddr),
+                           channel)
+        sock.setblocking(False)
+        if libc.connect(sock.fileno(), ctypes.byref(addr),
+                        ctypes.sizeof(addr)) != 0:
+            code = ctypes.get_errno()
+            if code != errno.EINPROGRESS:
+                raise OSError(code, os.strerror(code))
+            if not select.select([], [sock], [], timeout)[1]:
+                raise TimeoutError(errno.ETIMEDOUT, "timed out")
+            code = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+            if code:
+                raise OSError(code, os.strerror(code))
+        sock.settimeout(timeout)
+    except BaseException:
+        sock.close()
+        raise
+    return sock
 
 
 def address_for(name: str) -> str:
