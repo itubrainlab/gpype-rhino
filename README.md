@@ -1,4 +1,4 @@
-# gpype_rhino
+# gpype-rhino
 
 A licence-free g.Pype source for the g.tec **Unicorn Hybrid Black** EEG
 headset over Bluetooth. It talks to the headset's Bluetooth serial channel
@@ -7,7 +7,7 @@ directly, without g.tec's `gtec_unicorn` driver.
 ## Install
 
 ```bash
-pip install gpype_rhino
+pip install gpype-rhino
 ```
 
 From a checkout:
