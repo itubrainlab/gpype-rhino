@@ -84,6 +84,55 @@ def paired_devices() -> list[tuple[str, str]]:
     return []
 
 
+#: The remote device's address in a Windows Bluetooth port's instance ID:
+#: BTHENUM\{service}_LOCALMFG&0002\7&2F0E3D5B&0&A46DD417BF35_C00000000.
+_BTHENUM_ADDRESS = re.compile(r"&([0-9A-Fa-f]{12})_")
+#: Where Windows keeps the name each Bluetooth device was paired under.
+_BTHPORT_DEVICES = r"SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices"
+
+
+def windows_bluetooth_ports() -> list[tuple[str, str, str]]:
+    """(port, address, name) of each outgoing Bluetooth serial port,
+    Windows only.
+
+    Windows describes these ports only as "Standard Serial over Bluetooth
+    link (COMn)". The paired device's address is in the port's instance
+    ID, and the name it was paired under in the registry; the name is
+    empty where the registry cannot be read. Incoming ports, which have
+    no device, are left out. A Bluetooth port whose ID does not show the
+    device is listed with an empty address and name.
+    """
+    from serial.tools import list_ports
+    found = []
+    for p in list_ports.comports():
+        hwid = p.hwid or ""
+        addresses = _BTHENUM_ADDRESS.findall(hwid)
+        if not hwid.upper().startswith("BTHENUM") or not addresses:
+            if "bluetooth" in (p.description or "").lower():
+                found.append((p.device, "", ""))
+            continue
+        if int(addresses[-1], 16) == 0:
+            continue
+        raw = addresses[-1].upper()
+        address = ":".join(raw[i:i + 2] for i in range(0, 12, 2))
+        found.append((p.device, address, _windows_device_name(raw)))
+    return sorted(found)
+
+
+def _windows_device_name(raw_address: str) -> str:
+    """The name a Bluetooth device was paired under, from the registry."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            f"{_BTHPORT_DEVICES}\\{raw_address.lower()}") as key:
+            value, _ = winreg.QueryValueEx(key, "Name")
+    except (ImportError, OSError):
+        return ""
+    if isinstance(value, bytes):
+        value = value.split(b"\0", 1)[0].decode("utf-8", "replace")
+    return str(value).strip()
+
+
 class SerialLink:
     """The headset's serial port."""
 

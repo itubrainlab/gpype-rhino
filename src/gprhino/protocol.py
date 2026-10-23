@@ -32,7 +32,7 @@ import numpy as np
 import serial
 
 from .transport import (BluetoothLink, BridgeLink, DeviceNotFound,
-                        SerialLink, paired_devices)
+                        SerialLink, paired_devices, windows_bluetooth_ports)
 
 SAMPLING_RATE = 250
 NUM_EEG = 8
@@ -58,20 +58,41 @@ NUM_CHANNELS = NUM_EEG + NUM_ACCEL + NUM_GYRO + 3
 
 def find_ports() -> list[str]:
     """Serial ports that look like a paired Unicorn. On Linux these are
-    only the /dev/rfcommN bound by hand; see :func:`find_headsets`."""
+    only the /dev/rfcommN bound by hand; see :func:`find_headsets`. On
+    Windows, the Bluetooth ports of paired Unicorns, and those whose
+    device's name cannot be read."""
     if sys.platform == "darwin":
         return sorted(glob.glob("/dev/cu.UN-*"))
     if sys.platform.startswith("linux"):
         return sorted(glob.glob("/dev/rfcomm*"))
     from serial.tools import list_ports
-    return [p.device for p in list_ports.comports()
-            if "UN-" in (p.description or "") or "UN-" in (p.name or "")]
+    ports = [port for port, _, name in windows_bluetooth_ports()
+             if not name or _is_unicorn(name)]
+    ports += [p.device for p in list_ports.comports()
+              if ("UN-" in (p.description or "") or "UN-" in (p.name or ""))
+              and p.device not in ports]
+    return ports
 
 
 def find_headsets() -> list[str]:
-    """Names of the paired Unicorns, from BlueZ (Linux only)."""
-    return [name for _, name in paired_devices()
-            if name.upper().startswith("UN-")]
+    """Names of the paired Unicorns: from BlueZ on Linux, from the
+    Bluetooth serial ports on Windows. Not available on macOS."""
+    if sys.platform == "win32":
+        return [name for _, _, name in windows_bluetooth_ports()
+                if _is_unicorn(name)]
+    return [name for _, name in paired_devices() if _is_unicorn(name)]
+
+
+def _is_unicorn(name: str) -> bool:
+    return name.upper().startswith("UN-")
+
+
+def _same_headset(wanted: str, name: str) -> bool:
+    """Whether a name given for a headset (dots and the ``UN-`` prefix
+    optional) names the device paired as ``name``."""
+    plain = plain_name(name)
+    return bool(plain) and plain_name(wanted) in (plain,
+                                                  plain.removeprefix("un-"))
 
 
 def plain_name(name: str) -> str:
@@ -91,10 +112,16 @@ def port_for(serial_number: str) -> str:
     Raises:
         DeviceNotFound: If no port carries the name. Linux names its
             ports /dev/rfcommN, so there the port must be given (or the
-            bluetooth transport used, which needs no port).
+            bluetooth transport used, which needs no port). On Windows
+            the name (or address) is matched against the devices of the
+            Bluetooth ports; see :func:`windows_bluetooth_ports`.
     """
     wanted = plain_name(serial_number)
     if sys.platform == "win32":
+        for port, address, name in windows_bluetooth_ports():
+            if (_same_headset(serial_number, name)
+                    or serial_number.upper() == address):
+                return port
         from serial.tools import list_ports
         for p in list_ports.comports():
             if wanted in plain_name(p.description or ""):
@@ -162,7 +189,7 @@ class RhinoDevice:
             serial_number: The headset's name, e.g. ``UN-2024.08.41``, as
                 the Bluetooth settings list it; dots are optional. If
                 None, the one on ``port``, else the first paired one.
-                On Linux a Bluetooth address also does.
+                On Linux and Windows a Bluetooth address also does.
             port: The headset's serial port, e.g. ``COM3``, or a
                 ``/dev/rfcommN`` bound by hand on Linux.
             transport: ``"serial"`` reads the port itself,
@@ -191,6 +218,8 @@ class RhinoDevice:
                     "e.g. with bluetoothctl: scan on, pair <address>, "
                     "trust <address>.")
             serial_number = headsets[0]
+        if serial_number is None and port is None and sys.platform == "win32":
+            serial_number = next(iter(find_headsets()), None)
         if serial_number is None:
             if port is None:
                 ports = find_ports()

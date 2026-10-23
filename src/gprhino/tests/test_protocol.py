@@ -200,3 +200,93 @@ def test_sockaddr_rc_matches_linux():
     assert ctypes.sizeof(addr) == 10
     assert bytes(addr)[:9] == (bytes([31, 0]) + bytes.fromhex("35BF17D46DA4")
                                + bytes([1]))
+
+
+# -- Windows: Bluetooth serial ports ------------------------------------------
+
+SPP = "BTHENUM\\{00001101-0000-1000-8000-00805F9B34FB}"
+#: pyserial's view of a Windows PC with the headset and another device
+#: paired: each has an outgoing port, and the PC offers an incoming one.
+COMPORTS = [
+    ("COM3", "Communications Port (COM3)", "ACPI\\PNP0501\\0"),
+    ("COM4", "Standard Serial over Bluetooth link (COM4)",
+     f"{SPP}_LOCALMFG&0000\\7&1C5E7B1A&0&000000000000_00000000"),
+    ("COM5", "Standard Serial over Bluetooth link (COM5)",
+     f"{SPP}_LOCALMFG&0002\\7&2F0E3D5B&0&A46DD417BF35_C00000000"),
+    ("COM6", "Standard Serial over Bluetooth link (COM6)",
+     f"{SPP}_LOCALMFG&0002\\7&2F0E3D5B&0&785EA2BD0D5E_C00000000"),
+]
+#: The registry's BTHPORT\Parameters\Devices\<address>\Name values.
+NAMES = {"a46dd417bf35": b"UN-2024.10.18\x00", "785ea2bd0d5e": b"WILLEN\x00"}
+
+
+@pytest.fixture
+def windows(monkeypatch):
+    import sys
+    import types
+
+    from serial.tools import list_ports
+    from serial.tools.list_ports_common import ListPortInfo
+
+    def comports():
+        ports = []
+        for device, description, hwid in COMPORTS:
+            info = ListPortInfo(device, skip_link_detection=True)
+            info.description, info.hwid = description, hwid
+            ports.append(info)
+        return ports
+
+    class Key:
+        def __init__(self, path):
+            self.address = path.rsplit("\\", 1)[-1]
+            if self.address not in NAMES:
+                raise FileNotFoundError(path)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    winreg = types.SimpleNamespace(
+        HKEY_LOCAL_MACHINE=object(),
+        OpenKey=lambda root, path: Key(path),
+        QueryValueEx=lambda key, value: (NAMES[key.address], 3))
+    monkeypatch.setitem(sys.modules, "winreg", winreg)
+    monkeypatch.setattr(list_ports, "comports", comports)
+    monkeypatch.setattr(protocol.sys, "platform", "win32")
+
+
+def test_windows_bluetooth_ports(windows):
+    assert transport.windows_bluetooth_ports() == [
+        ("COM5", "A4:6D:D4:17:BF:35", "UN-2024.10.18"),
+        ("COM6", "78:5E:A2:BD:0D:5E", "WILLEN")]
+
+
+def test_windows_finds_the_headset(windows):
+    assert protocol.find_headsets() == ["UN-2024.10.18"]
+    assert protocol.find_ports() == ["COM5"]
+
+
+@pytest.mark.parametrize("name", [
+    "UN-2024.10.18", "UN-20241018", "2024.10.18", "A4:6D:D4:17:BF:35"])
+def test_windows_port_for(windows, name):
+    assert protocol.port_for(name) == "COM5"
+
+
+def test_windows_port_for_unknown_name(windows):
+    with pytest.raises(protocol.DeviceNotFound):
+        protocol.port_for("UN-2024.08.41")
+
+
+def test_windows_picks_first_paired_headset(windows):
+    device = RhinoDevice()
+    assert (device.serial_number, device.port) == ("UN-2024.10.18", "COM5")
+    assert isinstance(device._link, transport.SerialLink)
+
+
+def test_windows_lists_unnamed_bluetooth_ports(windows, monkeypatch):
+    """Where the registry cannot be read, the port is still offered."""
+    monkeypatch.setattr(transport, "_windows_device_name", lambda raw: "")
+    assert protocol.find_headsets() == []
+    assert protocol.find_ports() == ["COM5", "COM6"]

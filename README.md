@@ -67,6 +67,12 @@ the Xcode command line tools, and is placed in
 `~/Library/Caches/gprhino` when the install directory is read-only.
 macOS asks once for Bluetooth access the first time `RhinoConnect` runs.
 
+On Windows, pairing gives the headset an outgoing Bluetooth COM port.
+Windows describes it only as "Standard Serial over Bluetooth link", so
+the headset is found from the port's device instead: its Bluetooth
+address and the name it was paired under. The name (with or without
+`UN-`) or the address finds the port, and `port="COM5"` still works.
+
 ## Examples
 
 - `examples/scope.py` shows the headset in a g.Pype time-series scope, and
