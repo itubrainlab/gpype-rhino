@@ -1,6 +1,6 @@
 """Read a few seconds from the Unicorn without g.Pype and print a summary.
 
-    python probe_unicorn.py [device-name] [seconds]
+    python probe.py [device-name] [seconds]
 
 device-name is the headset's Bluetooth name, e.g. UN-2024.08.41; the
 first paired one if omitted.

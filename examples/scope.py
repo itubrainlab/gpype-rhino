@@ -1,8 +1,8 @@
 """Show the Unicorn Hybrid Black in a g.Pype time-series scope, and record
 or replay sessions with g.Pype's native record & replay.
 
-    python scope_unicorn.py [--device UN-2024.08.41] [--save-as raw]
-    python scope_unicorn.py --load-from raw_20261022_153000_123
+    python scope.py [--device UN-2024.08.41] [--save-as raw]
+    python scope.py --load-from raw_20261022_153000_123
 
 --device is the headset's Bluetooth name; the first paired one if omitted.
 
@@ -26,7 +26,7 @@ from gpype_rhino import RhinoHybridBlack
 
 #: The source's name. A replay finds its stream by this name, so a run
 #: recorded under one name only replays into a source of the same name.
-SOURCE_NAME = "unicorn"
+SOURCE_NAME = "rhino"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--device", default=None,
