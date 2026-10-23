@@ -2,7 +2,7 @@
 from .protocol import RhinoDevice, find_headsets, find_ports
 from .transport import DeviceNotFound, windows_bluetooth_ports
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __all__ = ["RhinoHybridBlack", "RhinoDevice", "DeviceNotFound",
            "find_headsets", "find_ports", "windows_bluetooth_ports"]
 
