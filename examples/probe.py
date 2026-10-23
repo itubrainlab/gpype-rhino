@@ -9,14 +9,14 @@ import sys
 
 import numpy as np
 
-from gpype_rhino import UnicornDevice, find_ports
+from gpype_rhino import RhinoDevice, find_ports
 from gpype_rhino.protocol import SAMPLING_RATE
 
 name = sys.argv[1] if len(sys.argv) > 1 else None
 seconds = float(sys.argv[2]) if len(sys.argv) > 2 else 5.0
 print("ports:", find_ports())
 
-device = UnicornDevice(name)
+device = RhinoDevice(name)
 print("connecting to", device.serial_number)
 device.start()
 try:

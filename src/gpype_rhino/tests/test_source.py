@@ -1,4 +1,4 @@
-"""The g.Pype node, with UnicornDevice replaced by one on a FakeLink."""
+"""The g.Pype node, with RhinoDevice replaced by one on a FakeLink."""
 import time
 
 import numpy as np
@@ -7,7 +7,7 @@ import pytest
 pytest.importorskip("gpype")
 
 from gpype_rhino import RhinoHybridBlack, source  # noqa: E402
-from gpype_rhino.protocol import UnicornDevice  # noqa: E402
+from gpype_rhino.protocol import RhinoDevice  # noqa: E402
 
 from .frames import FakeLink, make_frame  # noqa: E402
 
@@ -37,11 +37,11 @@ def test_acquisition_emits_selected_columns(monkeypatch):
     link = FakeLink()
 
     def fake_device(serial, port=None, transport="auto"):
-        device = UnicornDevice(serial, port="/dev/null", transport="serial")
+        device = RhinoDevice(serial, port="/dev/null", transport="serial")
         device._link = link
         return device
 
-    monkeypatch.setattr(source, "UnicornDevice", fake_device)
+    monkeypatch.setattr(source, "RhinoDevice", fake_device)
     node = RhinoHybridBlack(serial="UN-2024.08.41", channel_count=2,
                      include_aux=True, frame_size=5)
     frames = []

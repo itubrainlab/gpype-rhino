@@ -2,7 +2,7 @@
 
 Same shape as g.Pype's own ``HybridBlack`` -- same channel layout,
 roles, units and arrival stamp -- so it drops into any pipeline built
-for that node. The difference is the driver: :class:`UnicornDevice`
+for that node. The difference is the driver: :class:`RhinoDevice`
 talks to the headset's Bluetooth serial port directly.
 """
 from __future__ import annotations
@@ -19,7 +19,7 @@ from gpype.common._private import channels
 from gpype.common.constants import Constants
 
 from . import protocol
-from .protocol import UnicornDevice
+from .protocol import RhinoDevice
 
 PORT_OUT = Constants.Defaults.PORT_OUT
 
@@ -61,7 +61,7 @@ class RhinoHybridBlack(AmplifierSource):
             SERIAL = "serial"
             #: Serial port of the headset, where the name cannot find it.
             PORT = "port"
-            #: "auto", "serial" or "bridge"; see UnicornDevice.
+            #: "auto", "serial" or "bridge"; see RhinoDevice.
             TRANSPORT = "transport"
 
     def __init__(
@@ -146,7 +146,7 @@ class RhinoHybridBlack(AmplifierSource):
         self._include_gyro = include_gyro
         self._include_aux = include_aux
 
-        self._device: Optional[UnicornDevice] = None
+        self._device: Optional[RhinoDevice] = None
         self._running = False
         self._acquisition_thread: Optional[threading.Thread] = None
         self._current_frame: Optional[np.ndarray] = None
@@ -162,7 +162,7 @@ class RhinoHybridBlack(AmplifierSource):
         self._acquisition_error_counter = 0
 
         if self._device is None:
-            device = UnicornDevice(self._serial, port=self._port,
+            device = RhinoDevice(self._serial, port=self._port,
                                    transport=self._transport)
             device.start()
             self._device = device

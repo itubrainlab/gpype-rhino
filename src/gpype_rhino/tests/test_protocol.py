@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from gpype_rhino import protocol
-from gpype_rhino.protocol import UnicornDevice, decode, plain_name
+from gpype_rhino.protocol import RhinoDevice, decode, plain_name
 
 from .frames import FakeLink, make_frame
 
@@ -16,9 +16,9 @@ def as_array(*frames: bytes) -> np.ndarray:
 
 @pytest.fixture
 def device(monkeypatch):
-    """A UnicornDevice on a FakeLink, connecting without delay."""
+    """A RhinoDevice on a FakeLink, connecting without delay."""
     monkeypatch.setattr(protocol.time, "sleep", lambda s: None)
-    dev = UnicornDevice("UN-2024.08.41", port="/dev/null",
+    dev = RhinoDevice("UN-2024.08.41", port="/dev/null",
                         transport="serial")
     dev._link = FakeLink()
     yield dev
@@ -120,8 +120,8 @@ def test_get_data_after_stop_raises(device):
 
 def test_start_gives_up_without_acknowledgement(device, monkeypatch):
     device._link = FakeLink(acknowledge=False)
-    monkeypatch.setattr(UnicornDevice, "CONNECT_TIMEOUT_S", 0.0)
-    monkeypatch.setattr(UnicornDevice, "ACK_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(RhinoDevice, "CONNECT_TIMEOUT_S", 0.0)
+    monkeypatch.setattr(RhinoDevice, "ACK_TIMEOUT_S", 0.01)
     with pytest.raises(ConnectionError, match="did not answer"):
         device.start()
     assert device._link.closed == device._link.opened
@@ -130,4 +130,4 @@ def test_start_gives_up_without_acknowledgement(device, monkeypatch):
 def test_no_paired_device(monkeypatch):
     monkeypatch.setattr(protocol, "find_ports", lambda: [])
     with pytest.raises(protocol.DeviceNotFound):
-        UnicornDevice()
+        RhinoDevice()

@@ -35,12 +35,12 @@ app.run()
 p.stop()
 ```
 
-`UnicornDevice` reads the headset without g.Pype:
+`RhinoDevice` reads the headset without g.Pype:
 
 ```python
-from gpype_rhino import UnicornDevice
+from gpype_rhino import RhinoDevice
 
-device = UnicornDevice("UN-2024.08.41")
+device = RhinoDevice("UN-2024.08.41")
 device.start()
 data = device.get_data(250)   # one second: EEG, accel, gyro, battery, counter, valid
 device.stop()

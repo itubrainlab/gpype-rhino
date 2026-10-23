@@ -131,7 +131,7 @@ def decode(frames: np.ndarray, valid: np.ndarray) -> np.ndarray:
     return out
 
 
-class UnicornDevice:
+class RhinoDevice:
     """One Unicorn on a serial port, read on a thread of its own.
 
     Decoded scans collect in a buffer that :meth:`get_data` drains, so
