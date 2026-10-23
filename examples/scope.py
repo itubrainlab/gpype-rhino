@@ -22,7 +22,7 @@ from pathlib import Path
 
 import gpype as gp
 
-from gpype_rhino import RhinoHybridBlack
+from gprhino import RhinoHybridBlack
 
 #: The source's name. A replay finds its stream by this name, so a run
 #: recorded under one name only replays into a source of the same name.

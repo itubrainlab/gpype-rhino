@@ -26,7 +26,7 @@ HELPER_DIR = Path(__file__).parent / "macos"
 HELPER_NAME = "RhinoConnect.app"
 #: Where the helper is built when the package directory is read-only, as
 #: an installed package's usually is.
-HELPER_CACHE = Path.home() / "Library" / "Caches" / "gpype_rhino"
+HELPER_CACHE = Path.home() / "Library" / "Caches" / "gprhino"
 
 
 def _helper_built(directory: Path) -> bool:

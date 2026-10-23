@@ -1,4 +1,4 @@
 include README.md
 recursive-include examples *.py
-prune src/gpype_rhino/macos/RhinoConnect.app
+prune src/gprhino/macos/RhinoConnect.app
 global-exclude __pycache__ *.py[cod]

@@ -9,8 +9,8 @@ import sys
 
 import numpy as np
 
-from gpype_rhino import RhinoDevice, find_ports
-from gpype_rhino.protocol import SAMPLING_RATE
+from gprhino import RhinoDevice, find_ports
+from gprhino.protocol import SAMPLING_RATE
 
 name = sys.argv[1] if len(sys.argv) > 1 else None
 seconds = float(sys.argv[2]) if len(sys.argv) > 2 else 5.0

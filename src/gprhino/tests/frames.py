@@ -6,7 +6,7 @@ import struct
 import threading
 from typing import Sequence
 
-from gpype_rhino import protocol
+from gprhino import protocol
 
 
 def make_frame(counter: int, eeg: Sequence[int] = (0,) * 8,

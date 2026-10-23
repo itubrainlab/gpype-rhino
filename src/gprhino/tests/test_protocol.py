@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from gpype_rhino import protocol
-from gpype_rhino.protocol import RhinoDevice, decode, plain_name
+from gprhino import protocol
+from gprhino.protocol import RhinoDevice, decode, plain_name
 
 from .frames import FakeLink, make_frame
 

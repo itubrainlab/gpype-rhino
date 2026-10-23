@@ -22,7 +22,7 @@ pip install -e ".[test]"
 
 ```python
 import gpype as gp
-from gpype_rhino import RhinoHybridBlack
+from gprhino import RhinoHybridBlack
 
 app = gp.MainApp()
 p = gp.Pipeline()
@@ -38,7 +38,7 @@ p.stop()
 `RhinoDevice` reads the headset without g.Pype:
 
 ```python
-from gpype_rhino import RhinoDevice
+from gprhino import RhinoDevice
 
 device = RhinoDevice("UN-2024.08.41")
 device.start()
@@ -51,7 +51,7 @@ with `rfcomm bind` and pass the port (`port="/dev/rfcomm0"`). On macOS the
 connection goes through a small helper app, `RhinoConnect`. It is built
 from the bundled Swift source the first time it is needed, which requires
 the Xcode command line tools, and is placed in
-`~/Library/Caches/gpype_rhino` when the install directory is read-only.
+`~/Library/Caches/gprhino` when the install directory is read-only.
 macOS asks once for Bluetooth access the first time `RhinoConnect` runs.
 
 ## Examples
@@ -67,7 +67,7 @@ macOS asks once for Bluetooth access the first time `RhinoConnect` runs.
 The tests ship inside the package and need no headset:
 
 ```bash
-pytest --pyargs gpype_rhino
+pytest --pyargs gprhino
 ```
 
 ## License

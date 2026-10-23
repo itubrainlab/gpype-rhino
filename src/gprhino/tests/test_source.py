@@ -6,15 +6,15 @@ import pytest
 
 pytest.importorskip("gpype")
 
-from gpype_rhino import RhinoHybridBlack, source  # noqa: E402
-from gpype_rhino.protocol import RhinoDevice  # noqa: E402
+from gprhino import RhinoHybridBlack, source  # noqa: E402
+from gprhino.protocol import RhinoDevice  # noqa: E402
 
 from .frames import FakeLink, make_frame  # noqa: E402
 
 
 def test_importable_from_package():
-    import gpype_rhino
-    assert gpype_rhino.RhinoHybridBlack is source.RhinoHybridBlack
+    import gprhino
+    assert gprhino.RhinoHybridBlack is source.RhinoHybridBlack
 
 
 @pytest.mark.parametrize("kwargs, columns, units", [
