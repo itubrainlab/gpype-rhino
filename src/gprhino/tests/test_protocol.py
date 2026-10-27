@@ -83,15 +83,28 @@ def test_extract_frames_resyncs_after_garbage(device):
 
 
 def test_publish_counts_lost_scans(device):
-    device._publish([make_frame(c) for c in (10, 11, 14, 15)])
+    device._publish([make_frame(c) for c in (10, 11, 14, 15)], 0.0)
     assert device.lost_scans == 2
     scans = list(device._scans)
     assert [s[AUX + 2] for s in scans] == [1.0, 1.0, 0.0, 1.0]
     # Continuity carries over into the next batch.
-    device._publish([make_frame(17)])
+    device._publish([make_frame(17)], 0.0)
     assert device.lost_scans == 3
     assert device._scans[-1][AUX + 2] == 0.0
 
+
+def test_scans_seen_backed_off_by_place_in_burst(device):
+    """A scan early in a burst was acquired before the burst arrived."""
+    period = 1.0 / protocol.SAMPLING_RATE
+    device._publish([make_frame(c) for c in range(4)], 10.0)
+    assert list(device._seen) == pytest.approx(
+        [10.0 - 3 * period, 10.0 - 2 * period, 10.0 - period, 10.0])
+    device._running = True
+    device.get_data(2)
+    assert device.last_seen == pytest.approx(10.0 - 2 * period)
+    device.get_data(2)
+    assert device.last_seen == 10.0
+    assert not device._seen
 
 def test_start_stream_and_stop(device):
     link = device._link

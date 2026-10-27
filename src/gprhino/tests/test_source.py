@@ -36,8 +36,9 @@ def test_channel_layout(kwargs, columns, units):
 def test_acquisition_emits_selected_columns(monkeypatch):
     link = FakeLink()
 
-    def fake_device(serial, port=None, transport="auto"):
-        device = RhinoDevice(serial, port="/dev/null", transport="serial")
+    def fake_device(serial, port=None, transport="auto", **kwargs):
+        device = RhinoDevice(serial, port="/dev/null", transport="serial",
+                             **kwargs)
         device._link = link
         return device
 
@@ -68,3 +69,51 @@ def test_acquisition_emits_selected_columns(monkeypatch):
     assert frame[:, 0] == pytest.approx(
         np.arange(10) * source.protocol.EEG_UV_PER_COUNT, rel=1e-5)
     assert np.all(frame[:, 4] == 1.0)
+
+
+def test_stamp_is_acquisition_not_arrival(monkeypatch):
+    """Each frame is stamped when its last scan was acquired: seen, backed
+    off by its place in the burst, less the link's latency."""
+    link = FakeLink()
+
+    def fake_device(serial, port=None, transport="auto", clock=None):
+        device = RhinoDevice(serial, port="/dev/null", transport="serial",
+                             clock=lambda: 100.0)
+        device._link = link
+        return device
+
+    monkeypatch.setattr(source, "RhinoDevice", fake_device)
+    node = RhinoHybridBlack(serial="UN-2024.08.41", channel_count=1,
+                            frame_size=5, latency_ms=25)
+    frames = []
+    monkeypatch.setattr(node, "cycle",
+                        lambda: frames.append(node._current_frame))
+    monkeypatch.setattr(source.AmplifierSource, "start", lambda self: None)
+    monkeypatch.setattr(source.AmplifierSource, "stop", lambda self: None)
+
+    node.start()
+    try:
+        # One burst of ten scans, seen at 100 s.
+        link.feed(b"".join(make_frame(c) for c in range(10)))
+        deadline = time.monotonic() + 3
+        while len(frames) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+    finally:
+        node.stop()
+
+    assert len(frames) >= 2
+    period = 1.0 / source.protocol.SAMPLING_RATE
+    for frame, behind in zip(frames, (5, 0)):
+        expected = source.channels.wrap_time(100.0 - behind * period - 0.025)
+        assert np.all(frame[:, -1] == np.float32(expected))
+
+
+def test_latency_defaults_to_device_latency():
+    from gpype.backend.sources.hybrid_black import HybridBlack
+    assert RhinoHybridBlack.DEVICE_LATENCY_MS == HybridBlack.DEVICE_DELAY_MS
+    node = RhinoHybridBlack(serial="UN-2024.08.41")
+    assert node._latency_s == RhinoHybridBlack.DEVICE_LATENCY_MS / 1000
+    assert RhinoHybridBlack(serial="UN-2024.08.41",
+                            latency_ms=0)._latency_s == 0
+    with pytest.raises(ValueError):
+        RhinoHybridBlack(serial="UN-2024.08.41", latency_ms=-1)

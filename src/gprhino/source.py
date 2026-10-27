@@ -15,6 +15,7 @@ import numpy as np
 from gpype.backend.core.o_port import OPort
 from gpype.backend.sources.base.amplifier_source import (
     AmplifierSource, apply_channel_units)
+from gpype.backend.sources.hybrid_black import HybridBlack
 from gpype.common._private import channels
 from gpype.common.constants import Constants
 
@@ -30,7 +31,15 @@ class RhinoHybridBlack(AmplifierSource):
     Output columns, in order and each block only if enabled: EEG (uV),
     accelerometer (g), gyroscope (deg/s), then battery (%), counter and
     validation (1 when no scan was lost before this one), and finally the
-    arrival stamp g.Pype's Sync reads.
+    acquisition stamp g.Pype's Sync reads.
+
+    The stamp is when the frame's last scan was acquired, as near as the
+    host can tell: the instant it was first seen (see RhinoDevice), less
+    ``latency_ms``, the Bluetooth link's delay. g.Pype fits the master
+    timeline to these stamps and places every trigger on it, so a stamp
+    that is ``d`` late places triggers ``d`` too early against the EEG.
+    g.Pype's own HybridBlack stamps on arrival and leaves its measured
+    40 ms unapplied; this node applies it.
     """
 
     SAMPLING_RATE = protocol.SAMPLING_RATE
@@ -39,6 +48,13 @@ class RhinoHybridBlack(AmplifierSource):
     NUM_GYRO_CHANNELS = protocol.NUM_GYRO
     NUM_AUX_CHANNELS = 3
     NUM_TIMELINE_CHANNELS = 1
+    #: Bluetooth delay from acquiring a scan to it being seen on the host,
+    #: in ms. Taken from g.tec's own driver, ``HybridBlack.DEVICE_DELAY_MS``
+    #: in gpype/backend/sources/hybrid_black.py ("Measured Bluetooth
+    #: latency of this device"), which records it but never applies it.
+    #: g.tec does not say how it was measured, and this repository has not
+    #: verified it; measure your own setup to do better.
+    DEVICE_LATENCY_MS = float(getattr(HybridBlack, "DEVICE_DELAY_MS", 40))
     #: Consecutive failed reads tolerated before acquisition is given up.
     NUM_ACQUISITION_ERRORS_ALLOWED = 3
 
@@ -63,6 +79,8 @@ class RhinoHybridBlack(AmplifierSource):
             PORT = "port"
             #: "auto", "serial", "bluetooth" or "bridge"; see RhinoDevice.
             TRANSPORT = "transport"
+            #: Bluetooth delay subtracted from every stamp, in ms.
+            LATENCY_MS = "latency_ms"
 
     def __init__(
         self,
@@ -74,6 +92,7 @@ class RhinoHybridBlack(AmplifierSource):
         include_gyro: bool = False,
         include_aux: bool = False,
         transport: str = "auto",
+        latency_ms: Optional[float] = None,
         **kwargs,
     ):
         """Initialize the source. Nothing reaches the device until start().
@@ -94,6 +113,10 @@ class RhinoHybridBlack(AmplifierSource):
             include_accel: Include accelerometer channels (3 channels).
             include_gyro: Include gyroscope channels (3 channels).
             include_aux: Include battery, counter and validation channels.
+            latency_ms: Delay from a scan being acquired to it being seen
+                on the host, subtracted from every stamp so triggers line
+                up with the EEG they happened during. Defaults to
+                DEVICE_LATENCY_MS; 0 stamps on sight.
             **kwargs: Additional arguments for parent AmplifierSource.
         """
         keys = self.Configuration.Keys
@@ -121,6 +144,14 @@ class RhinoHybridBlack(AmplifierSource):
         kwargs[self.Configuration.OptionalKeys.SERIAL] = serial or None
         kwargs[self.Configuration.OptionalKeys.PORT] = port or None
         kwargs[self.Configuration.OptionalKeys.TRANSPORT] = transport
+        latency_ms = self.scalar(latency_ms)
+        if latency_ms is None:
+            latency_ms = self.DEVICE_LATENCY_MS
+        latency_ms = float(latency_ms)
+        if latency_ms < 0:
+            raise ValueError(
+                f"latency_ms must not be negative, got {latency_ms}.")
+        kwargs[self.Configuration.OptionalKeys.LATENCY_MS] = latency_ms
         kwargs.pop(keys.SAMPLING_RATE, None)
         kwargs.pop(keys.DECIMATION_FACTOR, None)
 
@@ -141,6 +172,7 @@ class RhinoHybridBlack(AmplifierSource):
         self._serial = serial or None
         self._port = port
         self._transport = transport
+        self._latency_s = latency_ms / 1000.0
         self._columns = np.array(columns)
         self._eeg_channel_count = channel_count
         self._total_channels = total_channels
@@ -165,7 +197,8 @@ class RhinoHybridBlack(AmplifierSource):
 
         if self._device is None:
             device = RhinoDevice(self._serial, port=self._port,
-                                   transport=self._transport)
+                                 transport=self._transport,
+                                 clock=channels.stamp_clock)
             device.start()
             self._device = device
             self.log(f"Connected to Unicorn {device.serial_number}")
@@ -243,7 +276,7 @@ class RhinoHybridBlack(AmplifierSource):
              self._total_channels + self.NUM_TIMELINE_CHANNELS),
             dtype=Constants.DATA_TYPE)
         frame[:, self._total_channels:] = channels.wrap_time(
-            channels.stamp_clock())
+            channels.stamp_clock() - self._latency_s)
         return {PORT_OUT: frame}
 
     def _acquisition_function(self) -> None:
@@ -258,13 +291,15 @@ class RhinoHybridBlack(AmplifierSource):
         while self._running:
             try:
                 block = device.get_data(frame_length)
-                arrival = channels.wrap_time(channels.stamp_clock())
+                # The last scan's, which Sync reads the instant back from.
+                acquired = channels.wrap_time(
+                    device.last_seen - self._latency_s)
 
                 frame = np.empty(
                     (frame_length, width + self.NUM_TIMELINE_CHANNELS),
                     dtype=Constants.DATA_TYPE)
                 frame[:, :width] = block[:, self._columns]
-                frame[:, width:] = arrival
+                frame[:, width:] = acquired
 
                 self._current_frame = frame
                 self.cycle()

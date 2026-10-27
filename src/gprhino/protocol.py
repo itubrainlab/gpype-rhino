@@ -26,7 +26,7 @@ import sys
 import threading
 import time
 from collections import deque
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import serial
@@ -173,6 +173,16 @@ class RhinoDevice:
     Decoded scans collect in a buffer that :meth:`get_data` drains, so
     the reader keeps pace with the radio however slowly the consumer
     asks.
+
+    Every scan is also given the instant it was first seen on the host,
+    read from ``clock``. The radio delivers scans in bursts, and a scan
+    early in a burst waits on the headset for the rest of it, so the
+    burst's arrival is not when that scan could first have been seen.
+    It is backed off by its place in the burst: a scan ``d`` scans
+    before the burst's last one was acquired ``d / SAMPLING_RATE``
+    earlier, so it is stamped that much before the burst arrived. What
+    remains in every stamp is the link's own delay, the same for every
+    scan.
     """
 
     #: How long start() keeps trying to reach the device, in seconds.
@@ -183,7 +193,8 @@ class RhinoDevice:
     BUFFER_SCANS = 60 * SAMPLING_RATE
 
     def __init__(self, serial_number: Optional[str] = None,
-                 port: Optional[str] = None, transport: str = "auto"):
+                 port: Optional[str] = None, transport: str = "auto",
+                 clock: Callable[[], float] = time.perf_counter):
         """
         Args:
             serial_number: The headset's name, e.g. ``UN-2024.08.41``, as
@@ -198,6 +209,8 @@ class RhinoDevice:
                 only), and ``"auto"`` picks the bridge on macOS, the
                 socket on Linux unless a port is given, the port
                 elsewhere.
+            clock: What the instants scans are seen at are read from,
+                in seconds.
 
         Raises:
             DeviceNotFound: If no headset is named, or none is paired.
@@ -244,12 +257,17 @@ class RhinoDevice:
         self._thread: Optional[threading.Thread] = None
         self._running = False
         self._scans: deque = deque(maxlen=self.BUFFER_SCANS)
+        self._seen: deque = deque(maxlen=self.BUFFER_SCANS)
+        self._clock = clock
         self._available = threading.Condition()
         self._last_counter: Optional[int] = None
         #: Scans the counter says were lost, and frames that failed to parse.
         self.lost_scans = 0
         self.bad_frames = 0
         self.stream_error: Optional[Exception] = None
+        #: Instant the last scan get_data returned was first seen, on
+        #: ``clock``; see the class docstring. None before the first.
+        self.last_seen: Optional[float] = None
 
     def start(self) -> None:
         """Open the link, start acquisition and the reader thread.
@@ -352,7 +370,11 @@ class RhinoDevice:
                     raise TimeoutError(
                         f"{n} scans did not arrive within {timeout} s.")
                 self._available.wait(remaining)
-            return np.stack([self._scans.popleft() for _ in range(n)])
+            scans = np.stack([self._scans.popleft() for _ in range(n)])
+            for _ in range(n - 1):
+                self._seen.popleft()
+            self.last_seen = self._seen.popleft()
+            return scans
 
     def _read_loop(self) -> None:
         buffer = bytearray()
@@ -361,10 +383,11 @@ class RhinoDevice:
                 chunk = self._link.read_some(1.0)
                 if not chunk:
                     continue
+                arrived = self._clock()
                 buffer += chunk
                 frames = self._extract_frames(buffer)
                 if frames:
-                    self._publish(frames)
+                    self._publish(frames, arrived)
         except Exception as error:  # noqa: BLE001
             if self._running:
                 self.stream_error = error
@@ -391,7 +414,7 @@ class RhinoDevice:
             del buffer[:next_header]
         return frames
 
-    def _publish(self, frames: list[bytes]) -> None:
+    def _publish(self, frames: list[bytes], arrived: float) -> None:
         raw = np.frombuffer(b"".join(frames), dtype=np.uint8)
         raw = raw.reshape(len(frames), FRAME_LENGTH)
         counters = raw[:, 39:43].copy().view("<u4")[:, 0].astype(np.int64)
@@ -405,6 +428,12 @@ class RhinoDevice:
         self._last_counter = int(counters[-1])
 
         scans = decode(raw, (gaps == 0).astype(np.float32))
+        # By position, not counter: a counter that jumps would move
+        # the stamps by the jump. A scan lost mid-burst only leaves
+        # the ones before it a little late.
+        behind = np.arange(len(frames) - 1, -1, -1)
+        seen = arrived - behind / SAMPLING_RATE
         with self._available:
             self._scans.extend(scans)
+            self._seen.extend(seen.tolist())
             self._available.notify_all()

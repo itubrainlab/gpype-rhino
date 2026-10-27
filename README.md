@@ -73,6 +73,41 @@ the headset is found from the port's device instead: its Bluetooth
 address and the name it was paired under. The name (with or without
 `UN-`) or the address finds the port, and `port="COM5"` still works.
 
+## Timing
+
+g.Pype places every trigger (a `gp.Marker`, a key press, a UDP event) on
+the EEG by comparing host-clock stamps. A trigger is stamped when it
+happens. An EEG sample over Bluetooth reaches the host tens of
+milliseconds after it was acquired, so `RhinoHybridBlack` stamps each
+frame with its acquisition time instead:
+
+- **Burst position.** The headset sends scans in bursts, and a scan
+  early in a burst waits for the rest of it. Each scan is stamped at its
+  burst's arrival less its place in the burst.
+- **Link delay.** `latency_ms` is subtracted from every stamp. It
+  defaults to g.tec's own figure for this headset, 40 ms, read from
+  `HybridBlack.DEVICE_DELAY_MS` in g.Pype's driver
+  (`gpype/backend/sources/hybrid_black.py`),
+  where it is recorded as the "measured Bluetooth latency of this device"
+  but never applied. g.tec does not say how it was measured, and it has
+  not been verified here.
+
+Measured with a simulated headset delivering 8-scan bursts 40 ms late
+with 5 ms jitter, a trigger is placed about 2 ms early against the EEG
+it happened during (4 ms with 15 ms jitter). Stamping on arrival
+instead, as g.Pype's own `HybridBlack` does, places it about 48 ms (12
+samples) early. Recordings keep the stamps,
+so a replay has the alignment the run was recorded with.
+
+The link delay of a particular computer and Bluetooth adapter can differ
+from 40 ms, and only an external reference can measure it, for example
+a photodiode or an audio click wired into an EEG channel at a known
+marker. Pass what you measure:
+
+```python
+source = RhinoHybridBlack(serial="UN-2024.08.41", latency_ms=32)
+```
+
 ## Examples
 
 - `examples/scope.py` shows the headset in a g.Pype time-series scope, and
