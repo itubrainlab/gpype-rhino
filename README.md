@@ -1,5 +1,19 @@
 # gpype-rhino
 
+> [!IMPORTANT]
+> **This repository is no longer actively developed.** Use g.tec's
+> [`gtec-unicorn`](https://pypi.org/project/gtec-unicorn/) **2.0.0** with
+> g.Pype's own `gp.HybridBlack` instead. It is the supported driver for
+> the Unicorn Hybrid Black, and from 2.0.0 it **no longer requires a
+> licence**, so there is no need for a licence-free alternative.
+>
+> ```bash
+> pip install "gtec-unicorn>=2.0.0"
+> ```
+>
+> The code below stays available as it is, but it will not get fixes or
+> new features.
+
 A licence-free g.Pype source for the g.tec **Unicorn Hybrid Black** EEG
 headset over Bluetooth. It talks to the headset's Bluetooth serial channel
 directly, without g.tec's `gtec_unicorn` driver.

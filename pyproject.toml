@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gpype-rhino"
 dynamic = ["version"]
-description = "Licence-free g.Pype source for the g.tec Unicorn Hybrid Black over Bluetooth"
+description = "Unmaintained: licence-free g.Pype source for the g.tec Unicorn Hybrid Black; use gtec-unicorn 2.0.0 instead"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -17,6 +17,7 @@ dependencies = [
 ]
 keywords = ["eeg", "bci", "unicorn", "gpype", "bluetooth"]
 classifiers = [
+    "Development Status :: 7 - Inactive",
     "Programming Language :: Python :: 3",
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",

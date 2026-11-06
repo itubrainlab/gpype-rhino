@@ -1,4 +1,8 @@
-"""Licence-free g.Pype source for the Unicorn Hybrid Black over Bluetooth."""
+"""Licence-free g.Pype source for the Unicorn Hybrid Black over Bluetooth.
+
+No longer actively developed: g.tec's gtec-unicorn 2.0.0 no longer
+requires a licence, so use it with g.Pype's own HybridBlack instead.
+"""
 from .protocol import RhinoDevice, find_headsets, find_ports
 from .transport import DeviceNotFound, windows_bluetooth_ports
 
